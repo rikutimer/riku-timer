@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>スタート側</title>
+</head>
+<body>
+    <h1>スタート側</h1>
+
+    <label>On-Set (秒): <input type="number" id="onSet" min="1.0" max="10.0" step="0.1" value="2.0">
+        <input type="range" id="onSetSlider" min="1.0" max="10.0" step="0.1" value="2.0" style="
+        width: 300px;">
+    </label>
+    <br>
+
+    <label>Set-Bam (秒): <input type="number" id="setBam" min="1.0" max="5.0" step="0.1" value="1.0">
+        <input type="range" id="setBamSlider" min="1.0" max="5.0" step="0.1" value="1.0" style="
+        width: 300px;">
+    </label>
+    <br>
+
+    <button id="startButton">スタート</button>
+    <a href="rikutimer.github.io/riku-timer/goal.html" target="_blank">ゴール側</a>
+    
+    <script>
+        const startButton = document.getElementById('startButton');
+        const onSetInput = document.getElementById('onSet');
+        const setBamInput = document.getElementById('setBam');
+        const onSetSlider = document.getElementById('onSetSlider');
+        const setBamSlider = document.getElementById('setBamSlider');
+
+        const ws = new WebSocket("wss://cloud.achex.ca/riku-timer");
+
+        ws.onopen = () => console.log("WebSocket接続成功");
+        ws.onerror = (error) => console.error("WebSocketエラー:", error);
+
+        // スライダーと数値入力を連動
+        function syncInputWithSlider(input, slider) {
+            input.addEventListener("input", () => slider.value = input.value);
+            slider.addEventListener("input", () => input.value = slider.value);
+        }
+        syncInputWithSlider(onSetInput, onSetSlider);
+        syncInputWithSlider(setBamInput, setBamSlider);
+
+        startButton.addEventListener("click", () => {
+            const onSet = parseFloat(onSetInput.value) * 1000;
+            const setBam = parseFloat(setBamInput.value) * 1000;
+
+            const playSound = (src) => {
+                const audio = new Audio(src);
+                audio.play();
+            };
+
+            playSound("sounds/on_your_marks.wav");
+
+            setTimeout(() => {
+                playSound("sounds/set.wav");
+
+                setTimeout(() => {
+                    playSound("sounds/bam.wav");
+
+                    const timestamp = (new Date().getTime() / 1000).toFixed(2);
+                    ws.send(JSON.stringify({ startTime: timestamp }));
+
+                }, setBam);
+            }, onSet);
+        });
+    </script>
+</body>
+</html>

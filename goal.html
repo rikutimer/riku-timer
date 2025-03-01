@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ゴール側</title>
+    <script async src="https://docs.opencv.org/master/opencv.js"></script>
+    <style>
+        body { display: flex; flex-direction: column; align-items: center; }
+        video { width: 100%; max-width: 640px; }
+        .timer { font-size: 2em; }
+        .lap-times { margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <h1>ゴール側</h1>
+    <video id="video" autoplay></video>
+    <canvas id="canvas" style="display:none;"></canvas>
+    <div class="timer" id="timer">00:00.00</div>
+    <div class="lap-times" id="lapTimes"></div>
+    <button id="stopButton">停止</button>
+    <button id="resetButton">リセット</button>
+    <a href="rikutimer.github.io/riku-timer/start.html" target="_blank">スタート側</a>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const timerDisplay = document.getElementById('timer');
+        const lapTimes = document.getElementById('lapTimes');
+        const stopButton = document.getElementById('stopButton');
+        const resetButton = document.getElementById('resetButton');
+        let startTime = null, interval = null, running = false;
+        let lastImageData = null;
+        
+        const ws = new WebSocket("wss://cloud.achex.ca/riku-timer");
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.startTime) {
+                startTime = parseFloat(data.startTime) * 1000;
+                startTimer();
+            }
+        };
+
+        function startTimer() {
+            if (running) return;
+            running = true;
+            interval = setInterval(() => {
+                const elapsed = (Date.now() - startTime) / 1000;
+                const minutes = Math.floor(elapsed / 60);
+                const seconds = (elapsed % 60).toFixed(2);
+                timerDisplay.textContent = `${minutes}:${seconds.padStart(5, '0')}`;
+            }, 10);
+        }
+
+        function stopTimer() {
+            running = false;
+            clearInterval(interval);
+        }
+
+        function resetTimer() {
+            stopTimer();
+            startTime = null;
+            timerDisplay.textContent = "00:00.00";
+            lapTimes.innerHTML = "";
+        }
+
+        stopButton.addEventListener('click', stopTimer);
+        resetButton.addEventListener('click', resetTimer);
+        
+        // カメラ映像の取得
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => {
+                video.srcObject = stream;
+                detectMotion();
+            })
+            .catch(err => console.error("カメラの取得に失敗", err));
+
+        function detectMotion() {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            setInterval(() => {
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                if (lastImageData) {
+                    let diff = 0;
+                    for (let i = 0; i < imageData.data.length; i += 4) {
+                        diff += Math.abs(imageData.data[i] - lastImageData.data[i]);
+                        diff += Math.abs(imageData.data[i+1] - lastImageData.data[i+1]);
+                        diff += Math.abs(imageData.data[i+2] - lastImageData.data[i+2]);
+                    }
+                    if (diff > 500000) { // 動体検知の閾値
+                        recordLapTime();
+                    }
+                }
+                lastImageData = imageData;
+            }, 100);
+        }
+
+        function recordLapTime() {
+            if (!running) return;
+            const elapsed = (Date.now() - startTime) / 1000;
+            const minutes = Math.floor(elapsed / 60);
+            const seconds = (elapsed % 60).toFixed(2);
+            const lapTime = `${minutes}:${seconds.padStart(5, '0')}`;
+            const lapEntry = document.createElement('div');
+            lapEntry.textContent = lapTime;
+            lapTimes.appendChild(lapEntry);
+        }
+    </script>
+</body>
+</html>
